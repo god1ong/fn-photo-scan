@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  fn-photo-scan:
+    build: .
+    container_name: fn-photo-scan
+    environment:
+      # 必填配置
+      - FNOS_HOST=your-fnos-ip:port
+      - FNOS_USERNAME=your-username
+      - FNOS_PASSWORD=your-password
+      
+      # 定时配置（cron 表达式）
+      - CRON_SCHEDULE=0 */6 * * *  # 每6小时执行一次（00:00, 06:00, 12:00, 18:00）
+      
+    volumes:
+      # 可选：挂载日志目录到主机
+      - ./logs:/var/log
+      
+    restart: unless-stopped
+    networks:
+      - fnos-network
+
+networks:
+  fnos-network:
+    driver: bridge
