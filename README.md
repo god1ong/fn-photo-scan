@@ -44,7 +44,7 @@
         -e FNOS_HOST="your-server:port" \
         -e FNOS_USERNAME="your-username" \
         -e FNOS_PASSWORD="your-password" \
-        -e CRON_SCHEDULE="* */2 * * *" \
+        -e CRON_SCHEDULE="0 */2 * * *" \
         --name fnos-photo-scan \
         --restart unless-stopped \
         god1ong/fn-photo-scan:latest
@@ -81,7 +81,7 @@
 | 表达式           | 说明                  |
 |------------------|-----------------------|
 | `*/5 * * * *`    | 每 5 分钟执行一次     |
-| `* */2 * * *`    | 每 2 小时执行一次     |
+| `0 */2 * * *`    | 每 2 小时执行一次     |
 | `0 * * * *`      | 每小时的第 0 分钟执行 |
 | `30 3 * * *`     | 每天凌晨 3:30 执行    |
 | `0 2 * * 0`      | 每周日凌晨 2:00 执行  |
