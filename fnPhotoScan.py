@@ -167,7 +167,7 @@ async def main():
     print("=" * 60)
     print(f"📡 目标地址: {BASE_URL}")
     print(f"👤 用户名: {USERNAME}")
-    print(f"🕐 时间: {datetime.datetime.now().strftime('%m-%d %H:%M')}")
+    print(f"🕐 时间: {datetime.datetime.now().strftime('%y-%m-%d %H:%M')}")
     print("=" * 60)
     
     # 1️⃣ 登录获取 token
