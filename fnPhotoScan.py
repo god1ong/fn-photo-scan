@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 FNOS 文件夹扫描工具
-版本: 1.3 (Docker + Cron版)
+版本: 1.4 (Docker + Cron版)
 功能: 自动登录、扫描所有照片文件夹、清理已完成任务
+新增: 支持指定文件夹ID列表，通过 FNOS_PHOTO_FOLDER_IDS 环境变量传入，逗号分隔
 """
 import logging
 import os
@@ -17,7 +18,7 @@ import datetime
 from sdk import FnOsClient
 
 # ===== 配置常量（从环境变量读取）=====
-VERSION = "1.3"
+VERSION = "1.4"
 
 # 从 FNOS_HOST 环境变量构建 URL
 FNOS_HOST = os.getenv("FNOS_HOST")
@@ -33,6 +34,16 @@ PASSWORD = os.getenv("FNOS_PASSWORD")
 
 if not USERNAME or not PASSWORD:
     raise ValueError("❌ 必须设置 FNOS_USERNAME 和 FNOS_PASSWORD 环境变量")
+
+# 可选的指定文件夹ID列表（逗号分隔）
+PHOTO_FOLDER_IDS = os.getenv("FNOS_PHOTO_FOLDER_IDS")
+specified_ids = None
+if PHOTO_FOLDER_IDS:
+    # 解析为整数列表，过滤掉空字符串
+    specified_ids = [int(x.strip()) for x in PHOTO_FOLDER_IDS.split(',') if x.strip()]
+    if not specified_ids:
+        print("⚠️ 警告: FNOS_PHOTO_FOLDER_IDS 为空，将扫描全部文件夹")
+        specified_ids = None
 
 # API 路径
 FOLDER_LIST_PATH = "/p/api/v1/photo/folder/list"
@@ -167,6 +178,10 @@ async def main():
     print("=" * 60)
     print(f"📡 目标地址: {BASE_URL}")
     print(f"👤 用户名: {USERNAME}")
+    if specified_ids:
+        print(f"🎯 指定文件夹ID: {specified_ids}")
+    else:
+        print("🎯 扫描模式: 全量文件夹")
     print(f"🕐 时间: {datetime.datetime.now().strftime('%y-%m-%d %H:%M')}")
     print("=" * 60)
     
@@ -187,11 +202,28 @@ async def main():
             raise Exception(f"获取文件夹列表失败: {folder_response.get('msg', 'Unknown error')}")
         
         folders = folder_response["data"]["list"]
-        folder_ids = [folder["folderId"] for folder in folders]
-        print(f"✅ 获取到 {len(folders)} 个文件夹: {folder_ids}")
+        all_folder_ids = [folder["folderId"] for folder in folders]
+        print(f"✅ 获取到 {len(all_folder_ids)} 个文件夹: {all_folder_ids}")
         
-        # 3️⃣ 扫描所有文件夹
-        print("\n🔄 开始扫描所有文件夹...")
+        # 3️⃣ 确定要扫描的文件夹ID列表
+        if specified_ids:
+            # 只保留存在的指定ID
+            target_set = set(specified_ids)
+            folder_ids = [fid for fid in all_folder_ids if fid in target_set]
+            missing_ids = target_set - set(all_folder_ids)
+            if missing_ids:
+                print(f"⚠️ 警告：以下指定的文件夹ID不存在，将被忽略: {missing_ids}")
+            print(f"🎯 将扫描 {len(folder_ids)} 个指定文件夹: {folder_ids}")
+        else:
+            folder_ids = all_folder_ids
+            print(f"🎯 将扫描全部 {len(folder_ids)} 个文件夹")
+        
+        if not folder_ids:
+            print("⚠️ 没有可扫描的文件夹，退出")
+            return
+        
+        # 4️⃣ 扫描所有文件夹
+        print("\n🔄 开始扫描文件夹...")
         success_count = 0
         
         for folder_id in folder_ids:
@@ -209,7 +241,7 @@ async def main():
         
         print(f"\n📊 扫描完成！成功: {success_count}/{len(folder_ids)}")
         
-        # 4️⃣ 清理已完成的任务
+        # 5️⃣ 清理已完成的任务
         print("\n" + "=" * 60)
         await clear_done_tasks(token)
         
