@@ -9,6 +9,7 @@ from .exceptions import WebSocketConnectionError
 from .handlers import *
 from .utils import *
 from .encryption import login_encrypt, get_signature_req, get_signature
+from .twofa import build_twofa_payload, is_twofa_challenge
 
 
 class BaseClient(ABC):
@@ -37,6 +38,7 @@ class BaseClient(ABC):
         self.secret = None
         self.uid = None
         self.admin = None
+        self.twofa_pending = None
 
         # 设置日志
         if not logger:
@@ -90,7 +92,11 @@ class BaseClient(ABC):
             try:
                 message = await self.websocket.recv()
                 data = json.loads(message)
-                self.logger.debug(f"Received: {message}")
+                response_req = self.req_mapping.get(data.get('reqid'))
+                if response_req in ('user.login', 'user.2fa.loginVerify'):
+                    self.logger.debug("Received: redacted FNOS authentication response")
+                else:
+                    self.logger.debug(f"Received: {message}")
                 if 'reqid' in data:
                     reqid = data['reqid']
                     # 返回响应
@@ -146,7 +152,7 @@ class BaseClient(ABC):
     async def send_request(self, req, **kwargs):
         reqid = get_reqid(self.backId)
         data = {'req': req, 'reqid': reqid, **kwargs}
-        if req in ['user.login', 'user.add']:
+        if req in ['user.login', 'user.add', 'user.2fa.loginVerify']:
             # 加密
             data = json.dumps(data, separators=(',', ':'))
             data = login_encrypt(data, self.pub, self.key, self.iv)
@@ -156,7 +162,10 @@ class BaseClient(ABC):
 
         await self.websocket.send(message)
         self.req_mapping[reqid] = req
-        self.logger.debug(f"Sent: {req} {message}")
+        if req in ('user.login', 'user.2fa.loginVerify'):
+            self.logger.debug(f"Sent: {req} (encrypted authentication request)")
+        else:
+            self.logger.debug(f"Sent: {req} {message}")
         return reqid
 
     def add_handler(self, req, handler):
@@ -222,11 +231,13 @@ class MainClient(BaseClient):
         # 这里注册回调函数，如果要给MainClient加处理请求，在这里加
         self.add_handler('util.crypto.getRSAPub', HandlerGetRSAPub)
         self.add_handler('user.login', HandlerLogin)
+        self.add_handler('user.2fa.loginVerify', HandlerLogin)
         # 连接后执行的方法
         await self.request(req='util.crypto.getRSAPub')
 
     async def login(self, username, password, *, deviceType='Browser', deviceName='Windows-Google Chrome',
                     stay=False):
+        self.twofa_pending = None
         data = {
             "user": username,
             "password": password,
@@ -236,7 +247,25 @@ class MainClient(BaseClient):
             "si": self.si
         }
         response = await self.request('user.login', **data)
+        challenge = is_twofa_challenge(response)
+        if challenge == 'code':
+            self.twofa_pending = {
+                'accessToken': response['accessToken'],
+                'stay': stay,
+                'deviceType': deviceType,
+                'deviceName': deviceName,
+            }
+            return {**response, 'twofaRequired': True, 'twofaSetupRequired': False}
+        if challenge == 'setup':
+            return {**response, 'twofaRequired': False, 'twofaSetupRequired': True}
         return response
+
+    async def submit_twofa_code(self, code):
+        """Submit a six-digit OTP and finish a pending 2FA login."""
+        if self.twofa_pending is None:
+            raise ValueError('There is no pending FNOS two-factor challenge.')
+        payload = build_twofa_payload(code, self.twofa_pending, self.si)
+        return await self.request('user.2fa.loginVerify', **payload)
 
     async def user_info(self):
         response = await self.request('user.info')

@@ -1,0 +1,10 @@
+services:
+  fn-photo-scan:
+    environment:
+      FNOS_2FA_SECRET_FILE: /run/secrets/fnos_2fa_secret
+    secrets:
+      - fnos_2fa_secret
+
+secrets:
+  fnos_2fa_secret:
+    file: ./secrets/fnos_2fa_secret

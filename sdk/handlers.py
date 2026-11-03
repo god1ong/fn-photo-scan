@@ -16,6 +16,12 @@ async def HandlerGetRSAPub(client, data):
 
 
 async def HandlerLogin(client, data):
+    # Password login can stop at a 2FA challenge. Only a full response carries
+    # the token and encrypted secret that HandlerLogin can safely process.
+    if data.get('result') != 'succ' or not data.get('token') or not data.get('secret'):
+        if data.get('backId'):
+            client.backId = data['backId']
+        return
     # 以下是登录返回
     client.backId = data.get('backId', None)
     client.token = data.get('token', None)
@@ -23,6 +29,7 @@ async def HandlerLogin(client, data):
     client.uid = data.get('uid', None)
     client.admin = data.get('admin', None)
     client.sign_key = aes_decrypt(client.secret, client.key, client.iv)
+    client.twofa_pending = None
 
 
 async def HandlerUserInfo(client, data):

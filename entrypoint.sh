@@ -3,12 +3,31 @@ set -e
 
 if [ -n "${CRON_SCHEDULE}" ]; then
     echo "⏰ 配置 cron 作业: ${CRON_SCHEDULE}"
+
+    # dcron does not pass the container environment to jobs. Keep only the
+    # application settings in a root-only runtime file, never in the crontab
+    # or startup output where the NAS password could be exposed.
+    python - <<'PY'
+import os
+import shlex
+
+path = "/run/fn-photo-scan.env"
+names = ("FNOS_HOST", "FNOS_USERNAME", "FNOS_PASSWORD", "FNOS_2FA_SECRET_FILE")
+flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+fd = os.open(path, flags, 0o600)
+os.fchmod(fd, 0o600)
+with os.fdopen(fd, "w", encoding="utf-8") as stream:
+    for name in names:
+        if name in os.environ:
+            stream.write(f"export {name}={shlex.quote(os.environ[name])}\n")
+    stream.flush()
+PY
     
     # 创建 crontabs 目录
     mkdir -p /var/spool/cron/crontabs
     
     # 构建 cron 作业 - 同时输出到文件和标准输出
-    CRON_JOB="${CRON_SCHEDULE} cd /app && /usr/local/bin/python fnPhotoScan.py 2>&1 | tee -a /var/log/fnPhotoScan.log"
+    CRON_JOB="${CRON_SCHEDULE} . /run/fn-photo-scan.env && cd /app && /usr/local/bin/python fnPhotoScan.py 2>&1 | tee -a /var/log/fnPhotoScan.log"
     
     # 写入 crontab
     echo "${CRON_JOB}" | crontab -
@@ -35,5 +54,5 @@ if [ -n "${CRON_SCHEDULE}" ]; then
     fi
 else
     echo "⚡ 执行单次任务..."
-    exec su - fnos-user -c "cd /app && python fnPhotoScan.py"
+    exec su -p fnos-user -c "cd /app && python fnPhotoScan.py"
 fi

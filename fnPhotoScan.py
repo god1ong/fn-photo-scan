@@ -16,6 +16,7 @@ import requests
 import json
 import datetime
 from sdk import FnOsClient
+from sdk.twofa import get_twofa_code
 
 # ===== 配置常量（从环境变量读取）=====
 VERSION = "1.4"
@@ -190,6 +191,16 @@ async def main():
     client = FnOsClient(ping_interval=60, logger=logging.getLogger("null"))
     await client.connect(WEBSOCKET_URL)
     login_res = await client.login(USERNAME, PASSWORD)
+    if login_res.get("twofaSetupRequired"):
+        raise RuntimeError(
+            "FNOS requires this account to enroll in 2FA before it can log in. "
+            "Complete enrollment in the FNOS web UI, then retry."
+        )
+    if login_res.get("twofaRequired"):
+        code = get_twofa_code(os.getenv("FNOS_2FA_SECRET_FILE"))
+        login_res = await client.submit_twofa_code(code)
+    if login_res.get("result") != "succ" or not login_res.get("token"):
+        raise RuntimeError("FNOS login failed or did not return a session token.")
     token = login_res["token"]
     print(f"✅ 登录成功")
     
