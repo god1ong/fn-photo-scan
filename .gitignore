@@ -1,2 +1,8 @@
-# 忽略 .env 文件
+.env
+.env.*
+!.env.example
+/secrets/*
+!/secrets/.gitkeep
 env
+__pycache__/
+*.py[cod]
